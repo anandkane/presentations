@@ -1,0 +1,141 @@
+consul keygen
+
+consul tls ca create
+consul tls cert create -server -dc dc1 -domain consul
+
+sudo mkdir --parents /etc/consul.d
+sudo touch /etc/consul.d/consul.hcl
+sudo chown --recursive consul:consul /etc/consul.d
+sudo chmod 640 /etc/consul.d/consul.hcl
+
+# consul.hcl
+datacenter = "dc1"
+data_dir = "/opt/consul"
+encrypt = "hhqI7xZMyhmEVVK67ssGJdfDMXNpNfDyZ6ekdcrCZGI="
+tls {
+   defaults {
+      ca_file = "<Consul configuration directory>/certs/consul-agent-ca.pem"
+      cert_file = "<Consul configuration directory>/certs/dc1-server-consul-0.pem"
+      key_file = "<Consul configuration directory>/certs/dc1-server-consul-0-key.pem"
+
+      verify_incoming = true
+      verify_outgoing = true
+   }
+   internal_rpc {
+      verify_server_hostname = true
+   }
+}
+
+auto_encrypt {
+  allow_tls = true
+}
+
+
+sudo touch /etc/consul.d/server.hcl
+sudo chown --recursive consul:consul /etc/consul.d
+sudo chmod 640 /etc/consul.d/server.hcl
+
+# server.hcl
+server = true
+bootstrap_expect = 3
+bind_addr = "172.16.0.10"
+ui_config {
+  enabled = true
+}
+
+sudo touch /etc/systemd/system/consul.service
+
+[Unit]
+Description="HashiCorp Consul - A service mesh solution"
+Documentation=https://www.consul.io/
+Requires=network-online.target
+After=network-online.target
+ConditionFileNotEmpty=/etc/consul.d/consul.hcl
+
+[Service]
+EnvironmentFile=-/etc/consul.d/consul.env
+User=consul
+Group=consul
+ExecStart=/usr/bin/consul agent -config-dir=/etc/consul.d/
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillMode=process
+KillSignal=SIGTERM
+Restart=on-failure
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+
+
+sudo consul validate /etc/consul.d/
+sudo systemctl enable consul
+sudo systemctl start consul
+sudo systemctl status consul
+
+
+export CONSUL_CACERT=/etc/consul.d/consul-agent-ca.pem
+export CONSUL_CLIENT_CERT=/etc/consul.d/<dc-name>-<server/client>-consul-<cert-number>.pem
+export CONSUL_CLIENT_KEY=/etc/consul.d/<dc-name>-<server/client>-consul-<cert-number>-key.pem
+
+
+
+create CA to sign certificates
+----------------------------------
+consul tls ca create
+==> Saved consul-agent-ca.pem
+==> Saved consul-agent-ca-key.pem
+
+create certificates (one for each server)
+-----------------------------------------
+consul tls cert create -server -dc dc1
+==> WARNING: Server Certificates grants authority to become a
+    server and access all state in the cluster including root keys
+    and all ACL tokens. Do not distribute them to production hosts
+    that are not server nodes. Store them as securely as CA keys.
+==> Using consul-agent-ca.pem and consul-agent-ca-key.pem
+==> Saved dc1-server-consul-0.pem
+==> Saved dc1-server-consul-0-key.pem
+
+
+cat server-config.hcl 
+verify_incoming = true
+verify_outgoing = true
+verify_server_hostname = true
+ca_file = "consul-agent-ca.pem"
+cert_file = "dc1-server-consul-0.pem"
+key_file = "dc1-server-consul-0-key.pem"
+auto_encrypt {
+  allow_tls = true
+}
+
+# create server cert
+openssl req -new -newkey rsa:2048 -nodes -keyout server1.dc1.consul.key -out server1.dc1.consul.csr -subj '/CN=server.dc1.consul'
+
+# sign req for server cert
+openssl x509 -req -in server1.dc1.consul.csr -CA consul-agent-ca.pem -CAkey consul-agent-ca-key.pem -CAcreateserial -out server1.dc1.consul.crt
+
+openssl x509 -text -noout -in server1.dc1.consul.crt
+
+# create client cert
+openssl req -new -newkey rsa:2048 -nodes -keyout client.dc1.consul.key -out client.dc1.consul.csr -subj '/CN=client.dc1.consul'
+
+# sign req for client cert
+openssl x509 -req -in client.dc1.consul.csr -CA consul-agent-ca.pem -CAkey consul-agent-ca-key.pem -out client.dc1.consul.crt
+
+
+openssl req -new -newkey rsa:2048 -nodes -keyout server1.dc1.consul.key -out server1.dc1.consul.csr -subj '/CN=server.dc1.consul' -config <(
+cat <<-EOF
+[req]
+req_extensions = req_ext
+distinguished_name = dn
+[ dn ]
+CN = *.dc1.consul
+[ req_ext ]
+basicConstraints=CA:FALSE
+subjectAltName = @alt_names
+[ alt_names ]
+DNS.1 = consul.example.com
+DNS.2 = localhost
+IP.1  = 127.0.0.1
+EOF
+)

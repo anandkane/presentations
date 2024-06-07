@@ -1,0 +1,159 @@
+openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 \
+  -nodes -keyout localhost.key -out localhost.crt -extensions san -config \
+  <(echo "[req]"; 
+    echo distinguished_name=req; 
+    echo "[san]"; 
+    echo subjectAltName=DNS:localhost
+    ) \
+  -subj "/CN=localhost"
+  
+sudo vault server -config start-config.hcl
+
+cat start-config.hcl 
+ui = true
+
+storage "file" {
+  path = "./vault-data"
+}
+
+listener "tcp" {
+  address = "127.0.0.1:8200"
+  tls_cert_file = "./certs/localhost.crt"
+  tls_key_file = "./certs/localhost.key"
+ 
+
+vault kv put kv/sample-application example.usename=uname example.password=password
+vault kv get kv/sample-application 
+vault kv put kv/sample-application example.username=uname example.password=password
+vault kv put kv/sample-application example.username=uname example.password=password
+vault kv get kv/sample-application 
+vault kv put kv/sample-application::development example.password=devpassword
+vault kv get kv/sample-application::development 
+vault kv put kv/hierarchical/path/to/application/sample-application example.username=uname example.password=password
+vault kv get kv/hierarchical/path/to/application/sample-application 
+vault kv put kv/hierarchical/path/to/application/sample-application example.username=appuname example.password=apppassword
+vault kv get kv/hierarchical/path/to/application/sample-application 
+vault kv patch kv/sample-application::development spring.datasource.username=postgres spring.datasource.password=postgres
+vault kv get kv/sample-application::development 
+
+example.password              devpassword
+spring.datasource.password    postgres
+spring.datasource.username    postgres
+
+
+vault write database/config/my-postgresql-database \
+    plugin_name="postgresql-database-plugin" \
+    allowed_roles="*" \
+    connection_url="postgresql://{{username}}:{{password}}@localhost:5432/postgres" \
+    username="vault" \
+    password="vault" \
+    password_authentication="scram-sha-256"
+
+vault write database/roles/mes-select-all-tables \
+    db_name="my-postgresql-database" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; \
+        GRANT USAGE ON SCHEMA mes TO \"{{name}}\"; \
+		GRANT SELECT ON ALL TABLES IN SCHEMA mes TO \"{{name}}\";" \
+    default_ttl="5m" \
+    max_ttl="24h"
+
+vault write database/roles/mes-all-on-all-tables \
+    db_name="my-postgresql-database" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; \
+        GRANT USAGE ON SCHEMA mes TO \"{{name}}\"; \
+        GRANT ALL ON ALL TABLES IN SCHEMA mes TO \"{{name}}\";" \
+    default_ttl="5m" \
+    max_ttl="24h"
+	
+	vault delete database/roles/mes-select-all-tables
+	
+keytool -import -trustcacerts -keystore vault.jks -storepass changeit -noprompt -alias mycert -file ../../../../certs/localhost.crt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+HashiCorp Vault Introduction
+Identity-based secrets and encryption management system
+A secret is anyting sensitive that needs to be secured, such as API encryption keys, passwords, and certificates
+Secrets can be accessed via UI, CLI, or HTTP API
+Secrets are encrypted before they are stored in the storage
+Access to secrets is tightly controlled (restricted), and auditable
+Clients (users, machines, apps) are authenticated and checked for authorization before they are given access to secrets
+Allows configuration of fine grained token based access to various secrets by attaching tokens to policies
+
+Key features
+Secure Secret Storage: Arbitrary key/value secrets can be stored in Vault. Vault encrypts these secrets prior to writing them to persistent storage, so gaining access to the raw storage isn't enough to access your secrets. Vault can write to disk, Consul, and more.
+
+Dynamic Secrets: Vault can generate secrets on-demand for some systems, such as AWS or SQL databases. For example, when an application needs to access an S3 bucket, it asks Vault for credentials, and Vault will generate an AWS keypair with valid permissions on demand. After creating these dynamic secrets, Vault will also automatically revoke them after the lease is up.
+
+Data Encryption: Vault can encrypt and decrypt data without storing it. This allows security teams to define encryption parameters and developers to store encrypted data in a location such as a SQL database without having to design their own encryption methods.
+
+Leasing and Renewal: All secrets in Vault have a lease associated with them. At the end of the lease, Vault will automatically revoke that secret. Clients are able to renew leases via built-in renew APIs.
+
+Revocation: Vault has built-in support for secret revocation. Vault can revoke not only single secrets, but a tree of secrets, for example all secrets read by a specific user, or all secrets of a particular type. Revocation assists in key rolling as well as locking down systems in the case of an intrusion.
+
+Types of Secret Engines
+Provides support for most of the systems out of the box
+KV - generic secrets engine for storing key value secrets
+Database - Generate username passwords to access most of the DBs dynamically.
+RabbitMQ - Generate user creadentials dynamically.
+Kubernetes - Generate service account tokens dynamically.
+
+https://developer.hashicorp.com/vault/docs/secrets
+
+Basic Operations Using CLI
+Enabling secrets
+Create mount path
+Add secrets
+	Put
+	Patch
+Read secrets
+Delete Secrets
+
+
+Integration with Spring Boot - Demo
+Screen shot of application.yaml
+
+
+Controlling access to secrets - Policies
+Provides fine grain access to secrets
+Allows configuring capabilities (read, write, delete, list etc)
+A token is attached to a policy when created
+A token used to access secrets controls access and capabilities
+
+
+Dynamic secrets
+Created on the fly when requested
+No need to statically configure secrets in kv secrets
+Not shared with other clients/services
+No risk of being compromised
+Have a configurable TTL and revocation mechanism
+Vault provides support for most of common databases like PostgreSQL, Oracle, MySql etc
+Vault allows creating plugins for data sources for which support is not provided out of the box
+
+
+Dynamic secrets In Spring Boot - Demo
+Screen Shot of application.yaml
+
+

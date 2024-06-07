@@ -1,0 +1,17 @@
+title OAuth2 grant-type authorization_code
+
+participant User
+participant Client App
+participant OAuth2 Server
+participant Resource Server
+
+User->Client App:Click login
+Client App->OAuth2 Server:HTTP GET /auth?\n**response_type=code**\nclient_id=customer-service-client\nscope=profile openid customer:list\nredirect_uri=http://localhost:6060/api/oauth2/callback\nstate=asdfdsas
+Client App<-OAuth2 Server:Present login page if the\nuser is not already logged in
+
+Client App->OAuth2 Server:User logs in with credentials
+Client App<-OAuth2 Server:http://localhost:6060/api/oauth2/callback?\nstate=asdfdsa\nsession_state=870413a6-e6a0-4d92-b7ce-615e2a6ae72e\niss=http://localhost:10101/realms/opussecurity\n**code=630fbfe7-98...**
+Client App->OAuth2 Server:HTTP POST /token\n**grant_type=authorization_code**\nclient_id=customer-service-client\n**client_secret=M1GI7mC...**\n**code=630fbfe7-98...**\nredirect_uri=http://localhost:6060/api/oauth2/callback\nscope=openid profile customer:list\n
+Client App<-OAuth2 Server:{\n    **"access_token": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSl..."**,\n    "expires_in": 1500,\n    "refresh_expires_in": 1800,\n    "refresh_token": "eyJhbGciOiJIUzUxM...",\n    "token_type": "Bearer",\n    "id_token": "eyJhbGciOiJSUzI1...",\n    "not-before-policy": 0,\n    "session_state": "870413a6-e6a0-4d92-b7ce-615e2a6ae72e",\n    "scope": "openid email profile customer:list"\n}
+
+Client App->Resource Server:http://localhost:9090/api/oauth2/customers \n--header **'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSl...**
